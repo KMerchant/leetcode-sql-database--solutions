@@ -1,0 +1,431 @@
+-- 176. Second Highest Salary
+
+with rankedSalary as(
+select salary, rank() over(order by salary) as SecondHighestSalary
+from employee
+)
+
+select salary as SecondHighestSalary
+from rankedSalary
+where SecondHighestSalary=2;
+
+-- 178. Rank Scores
+
+select score, dense_rank() over(order by score desc) as rank
+from scores;
+
+-- 180. Consecutive Numbers
+
+select distinct l1.num as ConsecutiveNums
+from logs l1, logs l2, logs l3
+where l1.id = l2.id - 1 and
+      l2.id = l3.id - 1 and
+      l1.num = l2.num and
+      l2.num = l3.num;
+
+-- 184. Department Highest Salary
+
+with cte as (select departmentId, max(salary) as maxSalary
+from employee
+group by departmentId)
+
+select d.name as Department, e.name as Employee, e.salary
+from employee e
+join cte me
+on e.departmentId=me.departmentId
+join department d
+on e.departmentId=d.id
+where e.salary=me.maxSalary;
+
+-- 534. Game Play Analysis III
+
+select
+  player_id,
+  event_date,
+  sum(games_played) over(partition by player_id order by event_date rows between unbounded preceding and current row) as games_played_so_far
+from activity;
+
+-- 550. Game Play Analysis IV
+
+with cte as
+(
+    select player_id,
+           lead(player_id) over (order by player_id, event_date)               as lead_player,
+           device_id,
+           event_date,
+           lead(event_date) over (order by player_id, event_date)              as lead_date,
+           lead(event_date) over (order by player_id, event_date) - event_date as dif_date,
+           min(event_date) over (partition by player_id) as min_date,
+           row_number() over (partition by player_id) as num_player
+    from activity a
+    order by player_id, event_date
+)
+
+select round((count(distinct player_id)*1.0)/(select count(distinct player_id) from activity), 2) as fraction
+from cte
+where player_id=lead_player and dif_date=1 and min_date::date+(num_player||' days')::interval=lead_date::date;
+
+-- 570. Managers with at Least 5 Direct Reports
+
+with cte as
+(
+  select managerId, count(*)
+  from employee
+  where managerId is not null
+  group by managerId
+  having count(*) >= 5
+)
+
+select e.name
+from employee e
+join cte c
+on e.id = c.managerId;
+
+-- 574. Winning Candidate
+
+with cte as
+(
+    select candidateId, count(*)
+    from vote
+    group by candidateId
+    order by 2 desc
+)
+
+select name
+from candidate
+where id = (
+    select candidateId
+    from cte
+    where rownum=1
+)
+
+-- 578. Get Highest Answer Rate Question
+
+with cte as
+(
+    select question_id, count(*) as shows
+    from surveylog
+    where action = 'show'
+    group by question_id
+),
+cte1 as
+(
+    select question_id, count(*) as shows
+    from surveylog
+    where action = 'answer'
+    group by question_id
+)
+
+select question_id as survey_log
+from
+(
+    select c.question_id, c.shows as shows, c1.shows as answers, c1.shows/c.shows as rate
+    from cte c
+    join cte1 c1
+    on c.question_id = c1.question_id
+    order by 4 desc, 1 asc
+)
+where rownum = 1;
+
+-- 580. Count Student Number in Departments
+
+select d.dept_name, coalesce(count(student_id), 0) as student_number
+from student s
+right join department d
+on s.dept_id = d.dept_id
+group by d.dept_name
+order by 2 desc, 1 asc;
+
+-- 585. Investments in 2016
+
+with cte as
+(
+    select pid,
+            tiv_2015,
+            tiv_2016,
+            lat,
+            lon,
+            count(*) over(partition by tiv_2015) as c_2015,
+            count(*) over(partition by lat, lon) as c_latlon
+    from insurance
+)
+
+select sum(tiv_2016) as tiv_2016
+from cte
+where c_2015>1 and c_latlon=1;
+
+-- 602. Friend Requests II: Who Has the Most Friends
+
+with cte as
+((select requester_id as id, count(accepter_id) as c_coun from requestaccepted group by requester_id)
+union all
+(select accepter_id as id, count(requester_id) from requestaccepted group by accepter_id))
+
+select *
+from
+(
+    select id, sum(c_coun) as num
+    from cte
+    group by id
+    order by num desc
+)
+where rownum=1
+
+-- 608. Tree Node
+
+select id, (case
+                    when p_id is null then 'Root'
+                    when id in (select p_id from tree) then 'Inner'
+                    else 'Leaf' end) as type
+from tree;
+
+-- 612. Shortest Distance in a Plane
+
+select round(min(distance), 2) as shortest
+from
+(
+SELECT
+    t1.x,
+    t1.y,
+    t2.x,
+    t2.y,
+    SQRT((POWER(t1.x - t2.x, 2) + POWER(t1.y - t2.y, 2))) AS distance
+FROM
+    point2d t1
+        JOIN
+    point2d t2 ON (t1.x <= t2.x AND t1.y < t2.y)
+        OR (t1.x <= t2.x AND t1.y > t2.y)
+        OR (t1.x < t2.x AND t1.y = t2.y)
+);
+
+-- 614. Second Degree Follower
+
+with cte as
+(
+    select followee, 
+    count(*) over(partition by followee) as wee_count,
+    follower,
+    count(*) over(partition by follower) as wer_count
+    from follow
+)
+
+select distinct followee as follower, wee_count as num
+from cte
+where followee in (select follower from follow)
+order by follower;
+
+-- 626. Exchange Seats
+
+select (case
+        when mod(id, 2)!=0 and counts!=id then id+1
+        when mod(id, 2)!=0 and counts=id then id
+        else id-1 end) as id,
+        student
+from seat, 
+    (select count(*) as counts from seat) seat_counts
+order by id asc;
+
+-- 1045. Customers Who Bought All Products
+
+select customer_id
+from customer
+group by customer_id
+having count(distinct product_key) = (select count(product_key) from product)
+
+-- 1070. Product Sales Analysis III
+
+with cte as
+(select product_id, min(year) as m_year
+from sales
+group by product_id)
+
+select s.product_id, s.year as first_year, s.quantity, s.price
+from sales s
+join cte c
+on s.year = c.m_year and s.product_id = c.product_id
+
+-- 1077. Project Employees III
+
+select project_id, employee_id
+from
+(
+    select p.project_id,
+    e.employee_id,
+    rank() over(partition by p.project_id order by e.experience_years desc) as rnk_emp
+    from project p
+    join employee e
+    on p.employee_id=e.employee_id
+)
+where rnk_emp=1;
+
+-- 1098. Unpopular Books
+
+with cte as
+(
+    select book_id,
+        sum(case when months_between(to_date('2019-06-23', 'yyyy-mm-dd'), dispatch_date)<=12 then quantity else 0 end) as quantity
+    from orders
+    group by book_id
+    having sum(case when months_between(to_date('2019-06-23', 'yyyy-mm-dd'), dispatch_date)<=12 then quantity else 0 end)<10
+), cte1 as
+(
+    select book_id, name
+    from books
+    where book_id not in (select book_id from orders)
+)
+
+select b.book_id, b.name
+from books b
+join cte c
+on b.book_id=c.book_id
+where months_between(to_date('2019-06-23', 'yyyy-mm-dd'), b.available_from)>1
+union all
+select *
+from cte1
+
+-- select b.book_id, b.name  from  books b
+-- left join orders o on o.book_id = b.book_id and o.dispatch_date between to_date('2018-06-23','yyyy-mm-dd') and to_date('2019-06-22','yyyy-mm-dd')
+-- where b.available_from < to_date('2019-06-23', 'yyyy-mm-dd') - 30 
+-- group by b.book_id, b.name 
+--  having nvl(sum(quantity), 0) < 10 
+-- order by book_id
+
+-- 1107. New Users Daily Count
+
+select to_char(activity_date, 'yyyy-mm-dd') as login_date, count(distinct user_id) as user_count
+from
+(
+    select user_id, activity, activity_date, min(activity_date) over(partition by user_id order by user_id) as first_date
+    from traffic
+    where activity='login'
+)
+where first_date=activity_date and (to_date('2019-06-30', 'yyyy-mm-dd') - activity_date)<=90
+group by activity_date
+
+-- 1112. Highest Grade For Each Student
+
+select student_id, min(course_id) as course_id, avg(f_grade) as grade
+from (
+    select student_id, course_id, grade, first_value(grade) over(partition by student_id) as f_grade
+    from enrollments
+    order by student_id, grade desc, course_id asc
+)
+where f_grade=grade
+group by student_id
+
+-- 1164. Product Price at a Given Date
+
+with cte as
+(
+    select distinct product_id,
+        first_value(new_price) over(partition by product_id order by change_date desc) as price
+    from products
+    where change_date<='2019-08-16'
+)
+
+select distinct p.product_id, coalesce(c.price, 10) as price
+from products p
+left join cte c
+on p.product_id=c.product_id;
+
+-- 1174. Immediate Food Delivery II
+
+with cte as
+(
+    select customer_id
+    from delivery
+    group by customer_id
+    having min(order_date) = min(customer_pref_delivery_date)
+)
+
+select 
+    round((select count(*) from cte) /
+    (select count(distinct customer_id) from delivery)*100, 2) as immediate_percentage
+from dual;
+
+-- 1193. Monthly Transactions I
+
+select to_char(trans_date, 'yyyy-mm') as month,
+country,
+count(*) as trans_count,
+count(case when state='approved' then state end) as approved_count,
+sum(amount) as trans_total_amount,
+coalesce(sum(case when state='approved' then amount end), 0) as approved_total_amount
+from transactions
+group by to_char(trans_date, 'yyyy-mm'), country;
+
+-- 1204. Last Person to Fit in the Bus
+
+with cte as(
+select turn, person_name, weight,
+    sum(weight) over(order by turn) as c_sum,
+    (case when sum(weight) over(order by turn)<=1000 then 1 else 0 end) as in_que
+from queue
+)
+
+select distinct first_value(person_name) over(order by c_sum desc) as person_name
+from cte
+where in_que=1;
+
+-- 1341. Movie Rating
+
+select name as results
+from
+(
+    select name, count(m.movie_id) as u_rat
+    from users u
+    join movierating m
+    on u.user_id=m.user_id
+    group by name
+    order by 2 desc, name asc
+)
+where rownum=1
+union all
+select title as results
+from
+(
+    select m.title, avg(mr.rating) as rt
+    from movies m
+    join movierating mr
+    on m.movie_id=mr.movie_id
+    where extract(month from mr.created_at)=2 and extract(year from mr.created_at)=2020
+    group by m.title
+    order by rt desc, m.title asc
+)
+where rownum=1
+
+-- 1907. Count Salary Categories
+
+with cte as
+(
+    select (case when income<20000 then 'Low Salary' 
+                when income between 20000 and 50000 then 'Average Salary' 
+                when income>50000 then 'High Salary' end) as category
+    from accounts
+),
+categories as
+(
+    select 'High Salary' as category
+    from dual
+    union
+    select 'Average Salary' as category
+    from dual
+    union
+    select 'Low Salary' as category
+    from dual
+)
+
+select ca.category as category, coalesce(count(ct.category), 0) as accounts_count
+from categories ca
+left join cte ct
+on ca.category=ct.category
+group by ca.category;
+
+-- 1934. Confirmation Rate
+
+select distinct s.user_id,
+        round(sum(case when action='confirmed' then 1 else 0 end) over(partition by s.user_id order by s.user_id rows between unbounded preceding and unbounded following) /  count(s.user_id) over(partition by s.user_id order by s.user_id rows between unbounded preceding and unbounded following), 2)as confirmation_rate
+from signups s
+left join confirmations c
+on c.user_id = s.user_id;
+

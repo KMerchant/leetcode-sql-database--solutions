@@ -1,0 +1,154 @@
+-- 185. Department Top Three Salaries
+
+select d.name  Department, e.name Employee, Salary
+from Employee e
+inner join Department d
+on d.id=e.departmentid
+where 4>(select count (Distinct salary )
+          from  employee e1
+          where e1.salary>=e.salary and e1.departmentid=e.departmentid);
+
+-- 262. Trips and Users
+
+select distinct request_at as "Day",
+round(((count(case when status != 'completed' then client_id end) over(partition by request_at))/(count(*) over(partition by request_at))), 2) as "Cancellation Rate"
+from trips
+where client_id in (select users_id from users where banned = 'No')
+and driver_id in (select users_id from users where banned = 'No')
+and request_at between '2013-10-01' and '2013-10-03';
+
+-- 569. Median Employee Salary
+
+with cte as(
+  select id, 
+        company,
+        salary,
+        row_number() over(partition by company order by salary, id) as ascen,
+        row_number() over(partition by company order by salary desc, id desc) as descen,
+        round(count(*) over(partition by company order by salary rows between unbounded preceding and unbounded following)/2) as row_s
+  from employee
+)
+
+select distinct id, company, salary
+from cte
+where row_s = ascen or row_s = descen;
+
+-- 571. Find Median Given Frequency of Numbers
+
+with cte as
+(
+    select num,
+    frequency,
+    sum(frequency) over(order by num rows between unbounded preceding and current row) as run_sum,
+    (sum(frequency) over(order by num rows between unbounded preceding and unbounded following))*1.0/2 as div,
+    (sum(num) over(order by num rows between current row and 1 following))*1.0/2 as med
+    from numbers
+),
+medians as 
+(
+    select
+        case
+            when div < run_sum then num
+            when div = run_sum then med
+        end as median
+    from cte
+)
+
+select *
+from medians
+where median is not null and rownum = 1;
+
+-- 579. Find Cumulative Salary of an Employee
+
+select id, month,
+        sum(salary) over(partition by id order by month range between 2 preceding and current row) as salary
+from employee
+where (id, month) not in (select id, max(month) as month from employee group by id)
+order by id, month desc;
+
+-- 601. Human Traffic of Stadium
+
+with cte as
+(
+    select id, visit_date, people, (id - row_number() over(order by id)) as island
+    from stadium
+    where people >= 100
+)
+
+select id, to_char(visit_date, 'yyyy-mm-dd') as visit_date, people
+from cte
+where island in (
+    select island
+    from cte
+    group by island
+    having count(*)>=3
+)
+order by visit_date;
+
+-- 615. Average Salary: Departments VS Company
+
+with emp_average as
+(
+    select to_char(pay_date, 'yyyy-mm') as emp_date, avg(amount) as emp_avg
+    from salary
+    group by to_char(pay_date, 'yyyy-mm')
+)
+
+
+select to_char(s.pay_date, 'yyyy-mm') as pay_month,
+        e.department_id,
+        (case when avg(s.amount) < (select emp_avg from emp_average where emp_date=to_char(s.pay_date, 'yyyy-mm')) then 'lower'
+            when avg(s.amount) = (select emp_avg from emp_average where emp_date=to_char(s.pay_date, 'yyyy-mm')) then 'same'
+            when avg(s.amount) > (select emp_avg from emp_average where emp_date=to_char(s.pay_date, 'yyyy-mm')) then 'higher' end) as comparison
+from salary s
+join employee e
+on s.employee_id=e.employee_id
+group by to_char(s.pay_date, 'yyyy-mm'), e.department_id
+
+-- 618. Students Report By Geography
+
+SELECT America, Asia, Europe
+FROM (
+  SELECT name, continent,
+         ROW_NUMBER() OVER (PARTITION BY continent ORDER BY name) AS rn
+  FROM student
+)
+PIVOT (
+  MAX(name)
+  FOR continent IN ('America' AS America, 'Asia' AS Asia, 'Europe' AS Europe)
+)
+ORDER BY America, Asia, Europe;
+
+-- 1097. Game Play Analysis V
+
+with cte as
+(
+    select *
+    from
+    (
+        select player_id, event_date, games_played,
+        min(event_date) over(partition by player_id) as f_date
+        from activity
+    )
+    where event_date=f_date
+),
+r_cte as (
+    select c.event_date, count(*) as r_cnt
+    from activity a
+    join cte c
+    on a.player_id=c.player_id and a.event_date-1=c.event_date
+    group by c.event_date
+)
+
+select to_char(f.event_date, 'yyyy-mm-dd') as install_dt,
+    f_cnt as installs,
+    round(coalesce(r_cnt, 0)/f_cnt, 2) as Day1_retention
+from
+(
+    select event_date, count(*) as f_cnt
+    from cte
+    group by event_date
+) f
+left join r_cte r
+on f.event_date=r.event_date
+
